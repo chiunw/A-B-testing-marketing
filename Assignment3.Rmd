@@ -1,0 +1,90 @@
+---
+title: "Assignment4"
+author: "Amy Chiu (chiu0109), Tiffany Chen (chen8541)"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(plm)
+library(ggplot2)
+```
+
+
+## 1. What is Wrong with Bob’s RoI Calculation?
+Overestimate of Revenue: The ROI calculation overestimate the sales growth from sponsored search ads. In fact, part of people is not influenced by the sponsored ads. These conversions occur organically and are not influenced by the ad. Instead, they are interested in Bazaar.com and would visit the website through an organic link, irrespective of the existence of sponsored ads. Hence, This porportion of revenue should not be excluded from ROI calculation.
+
+## 2. Define the Treatment and Control.
+Google was assigned as the treatment group, and the stoppage of sponsored search ads on Google occurred during the last three weeks of the experiment, while Bing, Yahoo, and Ask served as the control groups.
+
+## 3. Consider a First Difference Estimate.
+To implement the linear regression model, we introduced a new binary column named 'treatment' to signify whether the data points belonged to the treatment group. Additionally, we created a 'ttl' column, combining the average organic traffic and sponsored ads traffic, and an 'after' column to indicate whether the data point was recorded after the removal of sponsored ads.
+
+The linear regression analysis was conducted exclusively using Google data, with the dependent variable being 'ttl' and the independent variable 'after'. However, the p-value associated with the coefficient of the 'after' variable was notably high. This suggests insufficient confidence in asserting its effectiveness on total traffic. Potential reasons for this could include the oversight of other influential factors on organic traffic, such as overall market fluctuations.
+
+While the obtained results were statistically insignificant, the coefficient of 'after' was -1846. Despite the lack of significance, this coefficient implies that, in the absence of sponsored ads, the average total traffic would decrease by 1846 units. To gain a more comprehensive understanding of the true causal effect of sponsored ads, it is imperative to incorporate additional information that considers other potential influencing factors.
+
+```{r}
+df = read.csv('did_sponsored_ads.csv', header = TRUE)
+df$ttl = df$avg_spons + df$avg_org
+df <- df %>% mutate(treatment = ifelse(platform == 'goog', 1, 0))
+df <- df %>% mutate(after = ifelse(week >= 10, 1, 0))
+
+df_goog = df %>% filter(platform == 'goog')
+model1 = lm(ttl ~ factor(after), data = df_goog)
+summary(model1)
+
+```
+
+## 4. Calculate the Difference-in-Differences.
+
+### Check parallel assumption
+The line plot suggested that the treatment group and control group were not parallel. Consequently, we chose not to proceed with dynamic Difference-in-Differences (DiD) analysis to assess pre-treatment parallelism. Despite potential limitations in the reliability of linear regression results, we conducted a DiD regression comparing the treatment group and control group to assess the genuine impact of sponsored ads. The dependent variable was 'ttl', with independent variables including 'treatment' and 'after'.
+
+### Interpretation:
+The average weekly traffic decreased by 9910.6 units in the absence of sponsored ads. This reduction in total traffic surpasses the previous estimate of the 'after' coefficient, which was -1846. When compared, the impact on overall traffic was more pronounced when not considering other platform information.
+
+```{r}
+## check parallel
+df_group <- df %>% group_by(treatment, week) %>% summarise(ttl_sum = sum(ttl))
+ggplot(df_group, aes(x = week, y = ttl_sum, color = factor(treatment))) +
+  geom_line(size = 2) +
+  labs(x = "week", y = "ttl", title = "Line Plot with Platform Variable") +
+  geom_vline(xintercept = 10, linetype = "dashed", color = "grey", size = 1.5)
+
+# Run difference in difference regression model
+model2 = lm(ttl ~ factor(treatment) * factor(after), data = df)
+summary(model2)
+
+```
+
+## 5
+
+Bob should exclude clicks from individuals already familiar with the website and actively seeking it. Including them in the calculation might result in an overestimation of the Return on Investment (ROI). So we try to calculate traffic driven by organic search results using difference in difference first, and then use the value to get true traffic driven by sponsored ads.
+
+```{r}
+# calculate the traffic driven by organic search results
+did_org <- lm(avg_org ~ treatment + after + treatment * after, data=df)
+summary(did_org)
+
+```
+
+A = 9910 (traffic driven by the ads, which we got from (d)) 
+B = 2293 (traffic driven by organic search results)
+
+true traffic by ads = A / (A+B) = 9910 / (9910+2293) = 0.812
+
+```{r}
+ROI_new = (21 * 0.12 * 0.812- 0.6)/0.6
+ROI_new
+
+```
+
+
